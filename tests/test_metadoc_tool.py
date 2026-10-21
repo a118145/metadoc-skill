@@ -202,9 +202,12 @@ class CheckTest(unittest.TestCase):
     def test_header_and_pairing(self):
         body = self.read(self.metadoc).split("\n", 1)[1]
         self.write(self.metadoc, body)
-        self.assertIn("missing header", "\n".join(tool.check_metadoc(self.metadoc)))
-        problems = tool.check_metadoc(self.metadoc, self.source)
+        problems = tool.check_metadoc(self.metadoc)
         self.assertEqual(len(problems), 1, problems)
+        self.assertIn("missing header", problems[0])
+
+        self.write(self.metadoc, '<!-- metadoc:file version="0" source="kalman.py " -->\n' + body)
+        self.assertIn("source file not found", "\n".join(tool.check_metadoc(self.metadoc)))
 
         renamed = os.path.join(self.directory, "filter.metadoc")
         self.write(renamed, '<!-- metadoc:file version="0" source="kalman.py" -->\n')

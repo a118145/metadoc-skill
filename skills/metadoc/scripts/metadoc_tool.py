@@ -179,7 +179,7 @@ def nearest_match(lines: Sequence[str], length: int, wanted: str, hint: int) -> 
     return best
 
 
-def check_metadoc(metadoc_path: str, source_path: Optional[str] = None) -> List[str]:
+def check_metadoc(metadoc_path: str) -> List[str]:
     """Returns one "path:line: message" string per problem; an empty list means clean."""
     try:
         with open(metadoc_path, "rb") as handle:
@@ -193,26 +193,23 @@ def check_metadoc(metadoc_path: str, source_path: Optional[str] = None) -> List[
     problems: List[Tuple[int, str]] = list(doc.problems)
     directory = os.path.dirname(metadoc_path)
 
+    lines: Optional[List[str]] = None
     if doc.header is None:
         problems.append((1, 'missing header <!-- metadoc:file version="0" source="..." --> on the first non-blank line'))
     else:
         version = doc.header.get("version")
         if version != SPEC_VERSION:
             problems.append((1, f'header version is {version!r}, expected "{SPEC_VERSION}"'))
-        source = doc.header.get("source", "").strip()
-        if not source:
+        source = doc.header.get("source", "")
+        if not source.strip():
             problems.append((1, "header has no source attribute"))
-        elif source_path is None:
+        else:
             source_path = os.path.join(directory, *source.split("/"))
             problems.extend((1, message) for message in pairing_problems(metadoc_path, source_path))
-
-    lines: Optional[List[str]] = None
-    if source_path is None:
-        problems.append((1, "no source file to check against (add a source attribute or pass --source)"))
-    elif not os.path.isfile(source_path):
-        problems.append((1, f"source file not found: {source_path}"))
-    else:
-        lines = read_lines(source_path)
+            if not os.path.isfile(source_path):
+                problems.append((1, f"source file not found: {source_path}"))
+            else:
+                lines = read_lines(source_path)
 
     previous_start: Optional[int] = None
     for section in doc.sections:
@@ -304,11 +301,9 @@ def command_hash(args: argparse.Namespace) -> int:
 
 
 def command_check(args: argparse.Namespace) -> int:
-    if args.source is not None and len(args.metadocs) != 1:
-        raise UsageError("--source can only be used with a single metadoc")
     found = 0
     for path in args.metadocs:
-        problems = check_metadoc(path, args.source)
+        problems = check_metadoc(path)
         for problem in problems:
             print(problem)
         if not problems:
@@ -330,7 +325,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     check_parser = commands.add_parser("check", help="verify .metadoc files against their source files")
     check_parser.add_argument("metadocs", nargs="+", metavar="METADOC", help=".metadoc file(s)")
-    check_parser.add_argument("--source", help="source file to check against instead of the header's source")
     check_parser.set_defaults(handler=command_check)
 
     args = parser.parse_args(argv)
