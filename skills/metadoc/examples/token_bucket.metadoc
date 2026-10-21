@@ -1,0 +1,61 @@
+<!-- metadoc:file version="0" source="token_bucket.py" -->
+# token_bucket.py
+
+A **token-bucket rate limiter**: events may arrive in short bursts, but over
+any longer interval their average rate is capped. The clock is injected, so
+the limiter can be driven by real time in production and by a hand-advanced
+fake clock in tests and in the demo at the bottom of the file.
+
+<!-- metadoc:section symbol="TokenBucket" lines="10-44" hash="2633f4859988" -->
+## `TokenBucket`
+
+The bucket holds up to `capacity` tokens and refills continuously at `rate`
+tokens per second. Each event spends tokens; when the bucket is empty, events
+are refused until enough time has passed. Two parameters therefore shape the
+traffic independently: `capacity` is the largest burst, `rate` the long-run
+average.
+
+`tokens` and `stamp` (the time of the last refill) are internal state and are
+excluded from the constructor.
+
+<!-- metadoc:section symbol="TokenBucket.__post_init__" lines="20-24" hash="41934af911f5" -->
+### Construction
+
+Rejects non-positive `rate` or `capacity`, which would make the bucket either
+never refill or never hold a token. A new bucket starts **full**, so the first
+burst is granted immediately.
+
+<!-- metadoc:section symbol="TokenBucket._refill" lines="27-30" hash="4afc378e8ed3" -->
+### `_refill` — lazy top-up
+
+Instead of a timer, the bucket credits `elapsed · rate` tokens whenever it is
+queried, capped at `capacity`. The cap is what limits bursts: an idle period
+cannot bank more than one full bucket.
+
+<!-- metadoc:section symbol="TokenBucket.try_acquire" lines="32-39" hash="238c663b3b0e" -->
+### `try_acquire` — non-blocking take
+
+Refills, then spends `cost` tokens if they are available and reports whether
+the event may proceed. It never waits. A `cost` above `capacity` raises
+instead of returning `False` forever, because the bucket can never hold that
+many tokens.
+
+<!-- metadoc:section symbol="TokenBucket.wait_time" lines="41-44" hash="30e259b2531d" -->
+### `wait_time` — when to retry
+
+Seconds until `cost` tokens will be available, assuming nobody else takes
+tokens in the meantime; `0.0` if they are available now. Callers that want to
+block can sleep for this long and then call `try_acquire`.
+
+<!-- metadoc:section symbol="FakeClock" lines="47-54" hash="5c0c11f6dbae" -->
+## `FakeClock`
+
+A callable that returns a time the caller sets by hand (`clock.now += 0.25`).
+Passing it as `clock` makes the bucket's behaviour fully deterministic.
+
+<!-- metadoc:section lines="57-62" hash="4b9bcd35902f" -->
+## Demo
+
+Attempts one event every 0.25 s against a bucket with `capacity=3` and
+`rate=2/s`, i.e. twice as fast as the bucket allows. The first events drain
+the initial burst, after which roughly every other attempt is refused.
