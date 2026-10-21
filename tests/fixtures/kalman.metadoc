@@ -1,0 +1,79 @@
+<!-- metadoc:file version="0" source="kalman.py" -->
+# kalman.py
+
+A minimal **constant-velocity Kalman filter** in one dimension. The state is
+`[position, velocity]`; only the position is measured. The module contains the
+state container, the filter itself (predict/update cycle), and a deterministic
+simulation that shows the filter smoothing a noisy track.
+
+<!-- metadoc:section symbol="GaussianState" lines="9-16" hash="80af0221e425" -->
+## `GaussianState`
+
+Plain data holder for the Gaussian belief: the mean vector and the 2×2
+covariance matrix. The covariance starts very large (1000 on the diagonal),
+which encodes "we know nothing yet" — the first measurement then dominates the
+estimate instead of the arbitrary initial mean of zero.
+
+<!-- metadoc:section symbol="KalmanFilter" lines="19-58" hash="d7783b9eab1a" -->
+## `KalmanFilter`
+
+Linear Kalman filter for the motion model
+
+- `x[k+1] = F x[k] + w`, with `F = [[1, dt], [0, 1]]` (constant velocity),
+- `z[k] = H x[k] + v`, with `H = [1, 0]` (position measured only).
+
+The matrices are written out by hand instead of using NumPy, so every step of
+the algorithm is visible in the code.
+
+<!-- metadoc:section symbol="KalmanFilter.__init__" lines="22-26" hash="e324c2be3dbb" -->
+### Construction
+
+Stores the sample time `dt`, the process noise intensity `q` (how much the
+velocity is allowed to wander) and the measurement noise variance `r`, and
+starts from the uninformed `GaussianState`.
+
+<!-- metadoc:section symbol="KalmanFilter.predict" lines="28-39" hash="ed3b53953b24" -->
+### `predict` — time update
+
+Propagates the belief one step forward without new information:
+
+1. **Mean:** position advances by `dt · velocity`; velocity is unchanged.
+2. **Covariance:** `P ← F P Fᵀ + Q`. The product is expanded element by
+   element. `Q` is the discrete white-acceleration model, which adds
+   `q·dt⁴/4` to the position variance, `q·dt³/2` to the cross terms and
+   `q·dt²` to the velocity variance.
+
+Uncertainty therefore always *grows* during prediction.
+
+<!-- metadoc:section symbol="KalmanFilter.update" lines="41-54" hash="a474c953856a" -->
+### `update` — measurement update
+
+Fuses one position measurement into the belief:
+
+- **Innovation** `y = z − p`: how far the measurement is from the prediction.
+- **Innovation variance** `S = P₁₁ + r`.
+- **Gain** `K = P Hᵀ / S`, i.e. the first column of `P` divided by `S`. A large
+  `r` gives a small gain (trust the model); a large `P` gives a large gain
+  (trust the measurement).
+- Mean and covariance are corrected with `x ← x + K y` and `P ← (I − K H) P`.
+
+Returns the innovation so callers can monitor filter consistency.
+
+<!-- metadoc:section symbol="KalmanFilter.position" lines="56-58" hash="7987f8aa79c6" -->
+### `position`
+
+Read-only convenience accessor for the current position estimate.
+
+<!-- metadoc:section symbol="simulate" lines="61-74" hash="5ad48aca0751" -->
+## `simulate`
+
+Generates a synthetic trajectory and runs the filter on it. The true velocity
+performs a small random walk, measurements add Gaussian noise with σ = 2.
+Each step calls `predict` then `update` — the canonical filter loop — and
+records `(truth, measurement, estimate)`. A fixed seed makes the output
+reproducible, which is handy for tests and plots.
+
+<!-- metadoc:section lines="77-79" hash="6b207bf93c99" -->
+## Script entry point
+
+When run directly, prints the simulation as three aligned columns.
